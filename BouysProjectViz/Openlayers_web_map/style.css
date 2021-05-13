@@ -1,0 +1,8 @@
+.map {
+    height: 1000px;
+    width: 100%;
+}
+.map .ol-zoom {
+    top: 5px;
+    left: 5px;
+  }

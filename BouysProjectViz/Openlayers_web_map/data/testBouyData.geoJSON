@@ -1,0 +1,20 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "IMEI": 300434064120490,
+          "Ts": 12.63,
+          "BP": 68414.94
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            -76.731354,
+            36.418739
+          ]
+        }
+      }
+    ]
+  }
