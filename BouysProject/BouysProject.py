@@ -9,11 +9,20 @@ import re
 import pandas as pd
 import json
 import sys
+import csv
+from geojson import Feature, FeatureCollection, Point
 
 # account credentials
 #username = ""
 #password = ""
 # THE ABOVE CODE WAS CHANGED TO PROTECT CONFIDENTIAL INFORMATION #
+
+
+#Global Variables
+download = False        #Activates the downloading of the attached file, if the email contains it
+numberOfBouys = 2      #The current number of active bouys we are recieving emails from
+
+
 
 def clean(text):
  # clean text for creating a folder
@@ -33,81 +42,86 @@ def writeEmail(subject, body):
     f.write(body)
     f.close()
 
+def convertToGeojson(IMEI):
+    
+    features = []
+    with open(IMEI + '.csv', newline='') as csvfile:
+        reader = csv.reader(csvfile, delimiter=',')
+        next(reader)
+        for messageNo, time, latitude, longitude, pressure, temperature in reader:
+            Latitude, Longitude = map(float, (latitude, longitude))
+            features.append(
+                Feature(
+                    geometry = Point((float(longitude), float(latitude))),
+                    properties = {
+                        'Time': time,
+                        'Pressure': float(pressure),
+                        'Temperature': float(temperature)
+                    }
+                )
+            )
+
+    collection = FeatureCollection(features)
+    with open(IMEI + ".json", "w") as f:
+        f.write('%s' % collection)
+
 #reads the original text file, and changes some things to make it easier to parse as well as creates a csv
 #of the input text file
-def readTextfile(subject):
-    with open(subject + '.txt', "r") as f:
-        text = f.read()
+def readTextfile(body, IMEI, messageNo):
 
-        #replace all colons followed by a space with an equals sign
-        interText = re.sub(': ', r'=', text, flags = re.M)
+    noWhitespaceBody = re.sub(r'\n\s*\n', '\n', body)
+    
+    print(noWhitespaceBody)
 
-        #replace all equal signs with a newline
-        newlineText = re.sub('=|\n', r'\n', interText, flags = re.M)
-        
-        #replace all equal signs with a space
-        jsonText = re.sub('^.*(=)', r'', interText, flags = re.M)
+    bodyList = noWhitespaceBody.splitlines()
 
-        open('jsonText.txt', "w").write(jsonText)
+    data = re.sub(r'^.*?: ', '', bodyList[8])
+    #print(data + " DATA")
+    
+    time = re.sub(r'^.*?=', '', bodyList[9])
+    #print(time + " TIME")
 
-        keyList = ['IMEI', 'MOMSN', 'Transmit Time', 'Iridium Latitude', 'Iridium Longitude', 'Iridium CEP', 'Iridium Session Status', 'Data', 'GMT', 'LBT', 'Lat', 'Lon', 'BP', 'Ts']
+    lat = float(re.sub(r'^.*?=', '', bodyList[11]))
+    #print("{} {}".format(lat, " LAT"))
 
-        
-        dict1 = {}
-  
-        # creating dictionary
-        with open('jsonText.txt') as fh:
-            count = 0
-  
-            for line in fh:
-  
-                dict1[keyList[count]] = line.strip()
-                count+=1
-  
-        # creating json file
-        # the JSON file is named as test1
-        out_file = open(subject + ".json", "w")
-        json.dump(dict1, out_file, indent = 4, sort_keys = False)
-        out_file.close()
-        
+    lon = float(re.sub(r'^.*?=', '', bodyList[12]))
+    #print("{} {}".format(lon, " LON"))
 
-        #write the new textfile to the original
-        open('newline.txt', "w").write(newlineText)
+    bp = bodyList[13].split(' ', 1)[0]
+    bp = float(re.sub(r'^.*?=', '', bp))
+    #print("{} {}".format(bp, " BP"))
 
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
-        """
-        with open('newline.txt', "r") as g:
-            csvOutput = ''
-            count = 0
-            for line in g:
-                count+=1
-                line = line.strip()
-                if count == 2:
-                    csvOutput += line
-                elif count % 2 == 0:
-                    csvOutput += ',' + line
-        open('csv.txt', "w").write(csvOutput)
-                
-        csvFile = pd.read_csv('csv.txt', header=None)
-        csvFile.columns = ['IMEI', 'MOMSN', 'Transmit Time', 'Iridium Latitude', 'Iridium Longitude', 'Iridium CEP', 'Iridium Session Status', 'Data', 'GMT', 'LBT', 'Lat', 'Lon', 'BP', 'Ts']
-        csvFile.to_csv(subject + '.csv', index=False)
-        
-        os.remove('newline.txt')
-        os.remove('csv.txt')
-        os.remove('jsonText.txt')
-        """
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
-        # DELETE THIS MULTILINE COMMENT AFTER WE START GETTING INPUT #
+    temp = bodyList[14].split(' ', 1)[0]
+    temp = float(re.sub(r'^.*?=', '', temp))
+    #print("{} {}".format(temp, " TEMP"))
+
+    csvData = [messageNo, time, lat, lon, bp, temp]
+
+    with open(IMEI + ".csv", 'a+', newline='') as csvFile:
+        csvFile.seek(0)
+        reader = csv.reader(csvFile)
+        currentCsv = list(reader)
+        csvLength = len(currentCsv)
+
+        if csvLength == 0:
+            writer = csv.writer(csvFile)
+            writer.writerow(['Message Number', 'Time', 'Latitude', 'Longitude', 'Pressure', 'Temperature'])
+            writer.writerow(csvData)
+        else:
+            if currentCsv[csvLength-1][0] < messageNo:
+                writer = csv.writer(csvFile)
+                writer.writerow(csvData)
+                convertToGeojson(IMEI)
+        csvFile.close()
+
+
+
+
 
 
 
 # number of top emails to fetch
-N = 1
+N = numberOfBouys
 
 # create an IMAP4 class with SSL
 imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -154,9 +168,15 @@ for i in range(messages, messages-N, -1):
                         pass
                     if content_type == "text/plain" and "attachment" not in content_disposition:
                         # print text/plain emails and skip attachments
-                        print(body)
+                        #####print(body)
 
-                    elif "attachment" in content_disposition:
+                        #Saves the IMEI and Message Number as 2 variables
+                        tempSubject = subject.split()
+                        messageNo = tempSubject[1]
+                        IMEI = tempSubject[4]
+                        readTextfile(body, IMEI, messageNo)
+
+                    elif "attachment" in content_disposition and download == True:
                         # download attachment
                         filename = part.get_filename()
                         if filename:
