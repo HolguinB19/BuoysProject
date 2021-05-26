@@ -4,9 +4,7 @@ from email.header import decode_header
 import webbrowser
 import os
 import shutil
-from bs4 import BeautifulSoup
 import re
-import pandas as pd
 import json
 import sys
 import csv
@@ -19,8 +17,9 @@ from geojson import Feature, FeatureCollection, Point
 
 
 #Global Variables
-download = False        #Activates the downloading of the attached file, if the email contains it
-numberOfBouys = 2      #The current number of active bouys we are recieving emails from
+download = False                        #Activates the downloading of the attached file, if the email contains it
+username = sys.argv[1]                  #The username/email that gets scrubbed through. Passed as the first command line argument.
+password = sys.argv[2]                  #The Password to the email address. Passed as the second command line argument.
 
 
 
@@ -32,8 +31,17 @@ def clean(text):
 if (len(sys.argv) < 3):
     sys.exit("You must pass command line arguments in the form: BouysProject <Email Address> <Password>")
     
-username = sys.argv[1]
-password = sys.argv[2]
+try:
+    storageDirectory = sys.argv[3]          #The location where the generated csv and json files will be stored.
+except:
+    print("No file directory specified, defaulting to the same location where the program is located.")
+    storageDirectory = ''
+
+try:
+    numberOfBuoys = int(sys.argv[4])
+except:
+    print("Number of buoys not specified, defaulting to 1")
+    numberOfBuoys = 1
 
 
 
@@ -45,7 +53,7 @@ def writeEmail(subject, body):
 def convertToGeojson(IMEI):
     
     features = []
-    with open(IMEI + '.csv', newline='') as csvfile:
+    with open(storageDirectory + IMEI + '.csv', newline='') as csvfile:
         reader = csv.reader(csvfile, delimiter=',')
         next(reader)
         for messageNo, time, latitude, longitude, pressure, temperature in reader:
@@ -62,7 +70,7 @@ def convertToGeojson(IMEI):
             )
 
     collection = FeatureCollection(features)
-    with open(IMEI + ".json", "w") as f:
+    with open(storageDirectory + IMEI + ".json", "w") as f:
         f.write('%s' % collection)
 
 #reads the original text file, and changes some things to make it easier to parse as well as creates a csv
@@ -97,7 +105,7 @@ def readTextfile(body, IMEI, messageNo):
 
     csvData = [messageNo, time, lat, lon, bp, temp]
 
-    with open(IMEI + ".csv", 'a+', newline='') as csvFile:
+    with open(storageDirectory + IMEI + ".csv", 'a+', newline='') as csvFile:
         csvFile.seek(0)
         reader = csv.reader(csvFile)
         currentCsv = list(reader)
@@ -121,7 +129,7 @@ def readTextfile(body, IMEI, messageNo):
 
 
 # number of top emails to fetch
-N = numberOfBouys
+N = numberOfBuoys
 
 # create an IMAP4 class with SSL
 imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -135,7 +143,7 @@ status, messages = imap.select("INBOX")
 # total number of emails
 messages = int(messages[0])
 
-for i in range(messages, messages-N, -1):
+for i in range(messages - N, messages + 1, 1):
     # fetch the email message by ID
     res, msg = imap.fetch(str(i), "(RFC822)")
     for response in msg:
